@@ -1,3 +1,4 @@
+// Tools to init easily a temporary docker container, waiting for the service inside the container to start correctly.
 package docker
 
 import (
@@ -17,30 +18,43 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-const DOCKER_ADDRESS string = "127.0.0.1"
+const dockerAddress string = "127.0.0.1"
 const maxWaitTime = 5 * time.Second
 const stepWaitTime = 10 * time.Millisecond
 
+// Options gather the needed data to create the container.
 type Options struct {
-	Name   string
-	Image  string
-	Ports  []PortBinding
+	// Name of the container.
+	Name string
+	// Image is the container image name.
+	Image string
+	// PortBinding is a collection of port binding needed to access the container.
+	Ports []PortBinding
+	// If specified, this logger will be used to log messages during initialisation of the docker (And at closing/removing time).
 	Logger Logger
 }
 
+// PortBinding should follow this structure.
 type PortBinding struct {
-	Protocol         string
-	Internal         int
+	// Protocol can be TCP,UDP,...
+	Protocol string
+	// Internal port to bind to.
+	Internal int
+	// ExternalInterval define the range of possible external port that can be mapped to the specified internal port.
 	ExternalInterval string
 }
 
+// ContainerInfo return the container info needed to connect and to use the underlying service.
 type ContainerInfo struct {
+	// Address is the address of the container.
 	Address net.IP
-	Ports   map[PortBinding]int
+	// Ports will return the selected external ports, associated to PortBindings specified as Inputs at the creation of the container.
+	Ports map[PortBinding]int
 }
 
+// Create a new container. The function will return some infos on the created container and a function to call to close and remove the container.
 func New(options Options) (*ContainerInfo, func() error, error) {
-	var l Logger = &DefaultLogger{}
+	var l Logger = &defaultLogger{}
 	if nil != options.Logger {
 		l = options.Logger
 	}
@@ -55,7 +69,7 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 		return nil, nil, errors.Wrap(err, "Downloading image: "+options.Image)
 	}
 
-	ip := net.ParseIP(DOCKER_ADDRESS)
+	ip := net.ParseIP(dockerAddress)
 	if err := checkOptions(options); err != nil {
 		return nil, nil, errors.New("Docker instance cannot be used without a external port")
 	}
@@ -90,7 +104,7 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 
 	l.Print("Waiting for container: " + containerName)
 	reachablePorts := dockerPorts[options.Ports[0]]
-	if err := waitContainer(client, containerInfo.ID, DOCKER_ADDRESS+":"+strconv.Itoa(reachablePorts), maxWaitTime); nil != err {
+	if err := waitContainer(client, containerInfo.ID, dockerAddress+":"+strconv.Itoa(reachablePorts), maxWaitTime); nil != err {
 		return nil, nil, errors.Wrap(err, "Container not started withing time limit")
 	}
 	l.Print("Container started: " + containerName)
