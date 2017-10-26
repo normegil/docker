@@ -1,4 +1,5 @@
 // Tools to init easily a temporary docker container, waiting for the service inside the container to start correctly.
+// To create the container, see the New() function.
 package docker
 
 import (
