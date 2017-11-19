@@ -31,6 +31,8 @@ type Options struct {
 	Image string
 	// PortBinding is a collection of port binding needed to access the container.
 	Ports []PortBinding
+	// EnvironmentVariables define the variables inside the container
+	EnvironmentVariables map[string]string
 	// If specified, this logger will be used to log messages during initialisation of the docker (And at closing/removing time).
 	Logger Logger
 }
@@ -83,11 +85,17 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 	portBindings := toDockerPortBindings(ip, dockerPorts)
 	l.Printf("Port Bindings: %+v", portBindings)
 
+	varDefinitions := make([]string, 0)
+	for key, value := range options.EnvironmentVariables {
+		varDefinitions = append(varDefinitions, key+"="+value)
+	}
+
 	l.Printf("Creating container: %+v", containerName)
 	ctx := context.Background()
 	containerInfo, err := client.ContainerCreate(ctx, &container.Config{
 		Image:        options.Image,
 		ExposedPorts: toExposedPorts(options.Ports),
+		Env:          varDefinitions,
 	}, &container.HostConfig{
 		PortBindings: portBindings,
 	}, nil, containerName)
