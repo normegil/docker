@@ -4,7 +4,9 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"time"
@@ -62,13 +64,13 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 		l = options.Logger
 	}
 
-	l.Print("New docker client from environment")
+	l.Printf("New docker client from environment")
 	client, err := docker.NewEnvClient()
 	if nil != err {
 		return nil, nil, errors.Wrap(err, "MongoDB: Could not create docker client")
 	}
 
-	if err = pullImage(client, options.Image); err != nil {
+	if err = pullImage(client, options); err != nil {
 		return nil, nil, errors.Wrap(err, "Downloading image: "+options.Image)
 	}
 
@@ -103,26 +105,26 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 		return nil, nil, errors.Wrap(err, "Could not create container ("+containerName+")")
 	}
 	for _, warning := range containerInfo.Warnings {
-		l.Print(warning)
+		l.Printf(warning)
 	}
 
-	l.Print("Starting container: " + containerName)
+	l.Printf("Starting container: " + containerName)
 	if err := client.ContainerStart(ctx, containerInfo.ID, types.ContainerStartOptions{}); nil != err {
 		return nil, nil, errors.Wrap(err, "Could not start container ("+containerName+")")
 	}
 
-	l.Print("Waiting for container: " + containerName)
+	l.Printf("Waiting for container: " + containerName)
 	reachablePorts := dockerPorts[options.Ports[0]]
 	if err := waitContainer(client, containerInfo.ID, dockerAddress+":"+strconv.Itoa(reachablePorts), maxWaitTime); nil != err {
 		return nil, nil, errors.Wrap(err, "Container not started withing time limit")
 	}
-	l.Print("Container started: " + containerName)
+	l.Printf("Container started: " + containerName)
 
 	return &ContainerInfo{
 			Address: ip,
 			Ports:   dockerPorts,
 		}, func() error {
-			l.Print("Removing container: " + containerName)
+			l.Printf("Removing container: " + containerName)
 			ctx := context.Background()
 			if err := client.ContainerRemove(ctx, containerInfo.ID, types.ContainerRemoveOptions{Force: true}); nil != err {
 				return errors.Wrap(err, "MongoDB: Could not remove "+containerName)
@@ -131,24 +133,55 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 		}, nil
 }
 
-func pullImage(client *docker.Client, id string) error {
+func pullImage(client *docker.Client, options Options) error {
+	var l Logger = &defaultLogger{}
+	if nil != options.Logger {
+		l = options.Logger
+	}
+
+	l.Printf("Listing available images")
 	images, err := client.ImageList(context.Background(), types.ImageListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "Listing images")
 	}
 	for _, image := range images {
+		l.Printf("Available: %s (Searched:%s)", image.RepoTags, options.Image)
 		for _, tag := range image.RepoTags {
-			if tag == id {
+			if tag == options.Image {
 				return nil
 			}
 		}
 	}
 
-	closer, err := client.ImagePull(context.Background(), id, types.ImagePullOptions{})
+	l.Printf("Pulling %s", options.Image)
+	events, err := client.ImagePull(context.Background(), options.Image, types.ImagePullOptions{})
 	if err != nil {
-		return errors.Wrap(err, "Pulling image: "+id)
+		return errors.Wrap(err, "Pulling image: "+options.Image)
 	}
-	defer closer.Close()
+
+	stream := json.NewDecoder(events)
+
+	type Event struct {
+		Status         string `json:"status"`
+		Error          string `json:"error"`
+		Progress       string `json:"progress"`
+		ProgressDetail struct {
+			Current int `json:"current"`
+			Total   int `json:"total"`
+		} `json:"progressDetail"`
+	}
+	var event Event
+
+	for {
+		if err := stream.Decode(&event); nil != err {
+			if io.EOF == err {
+				break
+			}
+
+			return errors.Wrapf(err, "Pulling %s (Error decoding json stream)", options.Image)
+		}
+	}
+	l.Printf("Image %s pulled", options.Image)
 	return nil
 }
 
