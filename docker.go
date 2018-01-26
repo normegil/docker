@@ -51,6 +51,8 @@ type PortBinding struct {
 
 // ContainerInfo return the container info needed to connect and to use the underlying service.
 type ContainerInfo struct {
+	// Container ID
+	Identifier string
 	// Address is the address of the container.
 	Address net.IP
 	// Ports will return the selected external ports, associated to PortBindings specified as Inputs at the creation of the container.
@@ -109,24 +111,26 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 	}
 
 	l.Printf("Starting container: " + containerName)
-	if err := client.ContainerStart(ctx, containerInfo.ID, types.ContainerStartOptions{}); nil != err {
+	containerID := containerInfo.ID
+	if err := client.ContainerStart(ctx, containerID, types.ContainerStartOptions{}); nil != err {
 		return nil, nil, errors.Wrap(err, "Could not start container ("+containerName+")")
 	}
 
 	l.Printf("Waiting for container: " + containerName)
 	reachablePorts := dockerPorts[options.Ports[0]]
-	if err := waitContainer(client, containerInfo.ID, dockerAddress+":"+strconv.Itoa(reachablePorts), maxWaitTime); nil != err {
+	if err := waitContainer(client, containerID, dockerAddress+":"+strconv.Itoa(reachablePorts), maxWaitTime); nil != err {
 		return nil, nil, errors.Wrap(err, "Container not started withing time limit")
 	}
 	l.Printf("Container started: " + containerName)
 
 	return &ContainerInfo{
+			Identifier:  containerID,
 			Address: ip,
 			Ports:   dockerPorts,
 		}, func() error {
 			l.Printf("Removing container: " + containerName)
 			ctx := context.Background()
-			if err := client.ContainerRemove(ctx, containerInfo.ID, types.ContainerRemoveOptions{Force: true}); nil != err {
+			if err := client.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{Force: true}); nil != err {
 				return errors.Wrap(err, "MongoDB: Could not remove "+containerName)
 			}
 			return nil
