@@ -18,7 +18,7 @@ import (
 	"github.com/normegil/connectionutils"
 	"github.com/normegil/interval"
 	"github.com/pkg/errors"
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 )
 
 const dockerAddress string = "127.0.0.1"
@@ -81,7 +81,12 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 		return nil, nil, errors.New("Docker instance cannot be used without a external port")
 	}
 
-	containerName := options.Name + "-" + uuid.NewV4().String()
+	suffix, err := uuid.NewV4()
+	if nil != err {
+		return nil, nil, errors.Wrapf(err, "generating docker suffix for %s", options.Name)
+	}
+
+	containerName := options.Name + "-" + suffix.String()
 	dockerPorts, err := selectPorts(ip, options.Ports)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "Selecting ports")
