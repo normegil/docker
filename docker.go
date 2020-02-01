@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"net"
 	"strconv"
@@ -18,7 +19,6 @@ import (
 	"github.com/normegil/connectionutils"
 	"github.com/normegil/interval"
 	"github.com/pkg/errors"
-	"github.com/satori/go.uuid"
 )
 
 const dockerAddress string = "127.0.0.1"
@@ -81,7 +81,7 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 		return nil, nil, errors.New("Docker instance cannot be used without a external port")
 	}
 
-	suffix, err := uuid.NewV4()
+	suffix, err := uuid.NewRandom()
 	if nil != err {
 		return nil, nil, errors.Wrapf(err, "generating docker suffix for %s", options.Name)
 	}
@@ -129,9 +129,9 @@ func New(options Options) (*ContainerInfo, func() error, error) {
 	l.Printf("Container started: " + containerName)
 
 	return &ContainerInfo{
-			Identifier:  containerID,
-			Address: ip,
-			Ports:   dockerPorts,
+			Identifier: containerID,
+			Address:    ip,
+			Ports:      dockerPorts,
 		}, func() error {
 			l.Printf("Removing container: " + containerName)
 			ctx := context.Background()
